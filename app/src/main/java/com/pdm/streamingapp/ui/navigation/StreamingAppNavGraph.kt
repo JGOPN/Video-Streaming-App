@@ -10,12 +10,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.pdm.streamingapp.ui.auth.LoginScreen
 import com.pdm.streamingapp.ui.auth.RegisterScreen
+import com.pdm.streamingapp.ui.main.MainScreen
 
-
-//adicionar mais destinos aqui. Talvez um para visualizar a lista de filmes e um para a tela de exibicao do filme?
 enum class StreamingAppDestinations(val title: String) {
     Login(title = "login"),
-    Register(title = "register")
+    Register(title = "register"),
+    Main(title = "main")
 }
 
 @Composable
@@ -28,7 +28,7 @@ fun StreamingAppNavGraph(navController: NavHostController,
     ){
         composable(route = StreamingAppDestinations.Login.name) {
             LoginScreen(
-                onSubmit = {},
+                onLogin = {navController.navigate(StreamingAppDestinations.Main.name)},
                 onSwitch = { navController.navigate(StreamingAppDestinations.Register.name) },
                 modifier = Modifier
                     .fillMaxSize()
@@ -37,12 +37,15 @@ fun StreamingAppNavGraph(navController: NavHostController,
         }
         composable(route = StreamingAppDestinations.Register.name){
             RegisterScreen(
-                onSubmit = {},
+                onRegister = { navController.navigate(StreamingAppDestinations.Main.name)},
                 onSwitch = { navController.navigate(StreamingAppDestinations.Login.name) },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp)
             )
+        }
+        composable(route = StreamingAppDestinations.Main.title){
+            MainScreen()
         }
     }
 }

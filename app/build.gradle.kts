@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.10"
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -61,6 +62,11 @@ dependencies {
     // Retrofit with Kotlin serialization Converter
     implementation(libs.retrofit2.kotlinx.serialization.converter)
     implementation(libs.okhttp)
+    implementation(libs.kotlinx.datetime)
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-auth")
+    implementation(libs.coil.compose)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
