@@ -1,24 +1,31 @@
 package com.pdm.streamingapp.ui.main
 
+import android.content.ContentValues
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.pdm.streamingapp.model.Movie
 import com.pdm.streamingapp.network.StreamingAppAPI
-import com.pdm.streamingapp.network.TMDBApiService
 import com.pdm.streamingapp.network.tmdbApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.ResponseBody
 import retrofit2.HttpException
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
 
 
 enum class MainScreens(val title : String){
@@ -94,6 +101,74 @@ class MainViewModel : ViewModel() {
                 auth.signOut()
             } catch (e: Exception) {
                 handleExceptions(e)
+            }
+        }
+    }
+
+    suspend fun saveMovieLocally(context: Context, responseBody: ResponseBody, fileName: String): File? {
+        //this function recieves the response from downloadMovie and saves it locally
+        return withContext(Dispatchers.IO) {
+            try {
+                val outputStream: OutputStream
+                val file: File
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Scoped Storage: Use MediaStore for Android 10+
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
+                        put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                        put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
+                    }
+                    val uri = context.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
+                        ?: throw Exception("Failed to create MediaStore entry.")
+
+                    outputStream = context.contentResolver.openOutputStream(uri)
+                        ?: throw Exception("Failed to open output stream.")
+                    file = File(Environment.DIRECTORY_MOVIES, fileName) // Placeholder for return value
+                } else {
+                    // Legacy file handling for Android 9 and below
+                    val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+                    file = File(moviesDir, fileName)
+                    file.parentFile?.mkdirs() // Ensure directories exist
+                    outputStream = FileOutputStream(file)
+                }
+
+                // Write the data to the file
+                responseBody.byteStream().use { input ->
+                    outputStream.use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                file // Return the file reference after saving
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null // Return null on error
+            }
+        }
+    }
+
+    fun downloadAndSaveMovie(context: Context, movieId: Int, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                // Step 1: Call the API to download the movie
+                val responseBody: ResponseBody = StreamingAppAPI.retrofitService.downloadMovie(movieId = movieId.toString())
+
+                // Step 2: Define the file name and save path
+                val fileName = "movie_$movieId.mp4"
+                val filePath = "${context.getExternalFilesDir(null)}/$fileName"
+
+                // Step 3: Save the movie locally
+                val savedFile: File? = saveMovieLocally(context, responseBody, fileName)
+
+                if (savedFile != null) {
+                    onResult(true, "Movie saved at: ${savedFile.absolutePath}")
+                } else {
+                    onResult(false, "Failed to save the movie.")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onResult(false, "Error: ${e.message}")
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.pdm.streamingapp.ui.main
 
+import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Warning
@@ -48,13 +49,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
+import com.pdm.streamingapp.R
 import com.pdm.streamingapp.model.Movie
+import com.pdm.streamingapp.ui.components.RequestVideoPermissions
 import com.pdm.streamingapp.ui.theme.StreamingAppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,8 +67,19 @@ import com.pdm.streamingapp.ui.theme.StreamingAppTheme
 fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
     val mainUiState by mainViewModel.mainUiState.collectAsState()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+    val context = LocalContext.current
 
     Log.d("MainActivity","MainScreen recompose triggered. Current screen: ${mainUiState.currentScreen}")
+
+    RequestVideoPermissions { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            Toast.makeText(context, "All permissions granted!", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(context, "Some permissions were denied", Toast.LENGTH_LONG).show()
+
+        }
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -91,6 +107,7 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
                             movieList = mainUiState.movieList,
                             expandedCardId = mainUiState.expandedCardId,
                             onClickCard = mainViewModel::toggleCardExpansion,
+                            downloadAndSaveMovie = mainViewModel::downloadAndSaveMovie,
                             fetchThumbnail = mainViewModel::fetchThumbnail
                         )
                     }
@@ -111,6 +128,7 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
                                 expandedCardId = searchUiState.expandedCardId,
                                 onClickCard = mainViewModel::toggleSearchCardExpansion,
                                 fetchThumbnail = mainViewModel::fetchThumbnail,
+                                downloadAndSaveMovie = mainViewModel::downloadAndSaveMovie,
                                 modifier = Modifier.weight(1f) // Use weight to ensure LazyCardList does not overlap SearchBar
                             )
                             }
@@ -134,6 +152,7 @@ fun LazyCardList(
     expandedCardId: Int,
     onClickCard: (Int) -> Unit,
     fetchThumbnail: (String, (String?) -> Unit) -> Unit,
+    downloadAndSaveMovie: (Context, Int, (Boolean, String?) -> Unit) -> Unit,
     modifier: Modifier = Modifier
 ){
 
@@ -148,7 +167,8 @@ fun LazyCardList(
                 movie = item,
                 isExpanded = expandedCardId == item.id,
                 onClickCard = {onClickCard(item.id)},
-                fetchThumbnail = fetchThumbnail
+                fetchThumbnail = fetchThumbnail,
+                downloadAndSaveMovie = downloadAndSaveMovie
             )
         }
     }
@@ -161,7 +181,9 @@ fun MovieCard(
     onClickCard: (Int) -> Unit,             // expand card
     fetchThumbnail: (String, (String?) -> Unit) -> Unit,
     modifier: Modifier = Modifier,
+    downloadAndSaveMovie: (Context, Int, (Boolean, String?) -> Unit) -> Unit
 ) {
+    val context = LocalContext.current
     Card(modifier = modifier.fillMaxWidth(), onClick = {onClickCard(movie.id)}) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -179,20 +201,11 @@ fun MovieCard(
                         maxLines = 2,
                         modifier = Modifier
                             .padding(20.dp)
-                            .width(275.dp)
+                            .width(200.dp)
                     )
                 }
                 Column {
                     MovieThumbnail(movie.title, fetchThumbnail)
-                }
-            }
-            Column {
-                IconButton(onClick = {}) {
-                    Text(text = "Stream movie")
-                    Icon(
-                        Icons.Rounded.PlayArrow,
-                        contentDescription = "delete movie"
-                    )
                 }
             }
         }
@@ -225,6 +238,24 @@ fun MovieCard(
                     text = "Genre(s): ${movie.genres.joinToString(", ")}",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                Row{
+                    IconButton(onClick = { downloadAndSaveMovie(context, movie.id, { success, message ->
+                        if(success) Toast.makeText(context, "Movie downloaded successfully!", Toast.LENGTH_LONG).show()
+                        else Toast.makeText(context, "An error occured while downloading the movie: $message", Toast.LENGTH_LONG).show()
+                    }) }) {
+                        Icon(
+                            painter = painterResource(R.drawable.download_24dp),
+                            contentDescription = "download movie to device"
+                        )
+                    }
+                    IconButton(onClick = {}){
+                        Icon(
+                            painter = painterResource(R.drawable.stream_24dp),
+                            contentDescription = "stream movie "
+                        )
+                    }
+                }
+
             }
         }
     }
