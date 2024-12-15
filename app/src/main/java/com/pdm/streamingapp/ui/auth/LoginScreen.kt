@@ -49,7 +49,9 @@ fun LoginScreen(onLogin: () -> Unit, onSwitch: () -> Unit, modifier: Modifier, l
     if(isUserLoggedIn){ //checks if already logged in. If so, go straight to MainScreen
         val currentUser = FirebaseAuth.getInstance().currentUser
         Toast.makeText(context, "Already logged in as: ${currentUser?.email}", Toast.LENGTH_LONG).show()
-        onLogin()
+        LaunchedEffect(Unit){
+            onLogin()
+        }
     }
 
     if(authUiState.isDialogOpen){

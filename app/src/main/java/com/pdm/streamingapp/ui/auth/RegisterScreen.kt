@@ -54,7 +54,9 @@ fun RegisterScreen(onRegister: () -> Unit, onSwitch: () -> Unit, modifier: Modif
         if(isUserLoggedIn){ //checks if already logged in. If so, go straight to MainScreen
             val currentUser = FirebaseAuth.getInstance().currentUser
             Toast.makeText(context, "Logged in as: ${currentUser?.email}", Toast.LENGTH_LONG).show()
-            onRegister() //navigate to Main
+            LaunchedEffect(Unit){
+                onRegister() //navigate to Main
+            }
         }
 
         //When user clicks submit, open alertDialog if form not valid, otherwise registers user and triggers onSubmit()
