@@ -10,6 +10,7 @@ import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Query
 
 private const val BASE_URL =
         "http://192.168.1.72:8080" //local machine ip

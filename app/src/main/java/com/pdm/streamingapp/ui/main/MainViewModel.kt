@@ -29,8 +29,15 @@ enum class MainScreens(val title : String){
 
 data class MainUiState(
     val currentScreen : MainScreens = MainScreens.Home,
-    val expandedCardId : Int = -1,  //id for the selected movie or user card
+    val expandedCardId : Int = -1,  //id for the selected movie
     val movieList : List<Movie> = listOf()
+)
+
+data class SearchUiState(
+    val searchQuery : String = "",
+    val showingList: Boolean = false,
+    val expandedCardId : Int = -1,  //id for the selected movie
+    val movieList : List<Movie> = listOf() //stores the list filtered by query
 )
 
 class MainViewModel : ViewModel() {
@@ -42,12 +49,6 @@ class MainViewModel : ViewModel() {
     private val _mainUiState = MutableStateFlow(MainUiState())
     val mainUiState: StateFlow<MainUiState> = _mainUiState.asStateFlow()
 
-    private val _dialogState = mutableStateOf(false)    //confirmation dialog
-    val dialogState: State<Boolean> = _dialogState
-
-    private val _selectedId = mutableStateOf<Int?>(null)        //selected id for delete
-    val selectedMovieId: State<Int?> = _selectedId
-
     fun setCurrentScreen(screen: MainScreens){
         _mainUiState.update {
                 currentState -> currentState.copy(currentScreen = screen)
@@ -58,23 +59,6 @@ class MainViewModel : ViewModel() {
         _mainUiState.update {
                 currentState -> currentState.copy(expandedCardId = cardId)
         }
-    }
-
-    fun showDialog(id: Int) {
-        _selectedId.value = id
-        _dialogState.value = true
-    }
-
-    fun hideDialog() {
-        _selectedId.value = null
-        _dialogState.value = false
-    }
-
-    fun confirmDelete(onDelete: (Int) -> Unit) {
-        _selectedId.value?.let { id ->
-            onDelete(id)
-        }
-        hideDialog()
     }
 
     fun getMovieList() {
@@ -111,6 +95,35 @@ class MainViewModel : ViewModel() {
             } catch (e: Exception) {
                 handleExceptions(e)
             }
+        }
+    }
+
+    private val _searchUiState = MutableStateFlow(SearchUiState())
+    val searchUiState: StateFlow<SearchUiState> = _searchUiState.asStateFlow()
+
+    fun updateSearchQuery(query: String){
+        _searchUiState.update {
+                currentState -> currentState.copy(searchQuery = query)
+        }
+    }
+
+    fun toggleShowingList(b: Boolean = false) {
+        _searchUiState.update {
+                currentState -> currentState.copy(showingList = b)
+        }
+    }
+
+    fun toggleSearchCardExpansion(cardId: Int) {
+        _searchUiState.update {
+                currentState -> currentState.copy(expandedCardId = cardId)
+        }
+    }
+
+    fun filterMovieList(){
+        //takes the movielist from main screen, filters for title matching query
+        val movieListFiltered = _mainUiState.value.movieList.filter{ it.title.contains(_searchUiState.value.searchQuery, ignoreCase = true) }
+        _searchUiState.update {
+                currentState -> currentState.copy(movieList = movieListFiltered)
         }
     }
 }

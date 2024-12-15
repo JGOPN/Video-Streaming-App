@@ -3,12 +3,13 @@ package com.pdm.streamingapp.ui.main
 import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
@@ -32,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
@@ -52,7 +55,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
 import com.pdm.streamingapp.model.Movie
-import com.pdm.streamingapp.ui.components.ConfirmationDialog
 import com.pdm.streamingapp.ui.theme.StreamingAppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,29 +81,48 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
         },
     ) { innerPadding ->
 
-        when (mainUiState.currentScreen) {
-            MainScreens.Home -> {
-                if (mainUiState.movieList.isEmpty()) {
-                    ShowError(onClick = mainViewModel::getMovieList)
-                } else {
-                    LazyCardList(
-                        innerPadding = innerPadding,
-                        mainUiState = mainUiState,
-                        dialogState = mainViewModel.dialogState.value,
-                        selectedMovieId = mainViewModel.selectedMovieId.value,
-                        onClickCard = mainViewModel::toggleCardExpansion,
-                        hideDialog = mainViewModel::hideDialog,
-                        showDialog = mainViewModel::showDialog,
-                        fetchThumbnail = mainViewModel::fetchThumbnail
+        Box(modifier = Modifier.padding(innerPadding)){
+            when (mainUiState.currentScreen) {
+                MainScreens.Home -> {
+                    if (mainUiState.movieList.isEmpty()) {
+                        ShowError(onClick = mainViewModel::getMovieList)
+                    } else {
+                        LazyCardList(
+                            movieList = mainUiState.movieList,
+                            expandedCardId = mainUiState.expandedCardId,
+                            onClickCard = mainViewModel::toggleCardExpansion,
+                            fetchThumbnail = mainViewModel::fetchThumbnail
+                        )
+                    }
+                }
+
+                MainScreens.Search -> {
+                    val searchUiState by mainViewModel.searchUiState.collectAsState()
+                    Column(modifier = Modifier.fillMaxSize()){
+                        SearchBar(
+                            searchUiState,
+                            mainViewModel::updateSearchQuery,
+                            mainViewModel::filterMovieList,
+                            mainViewModel::toggleShowingList
+                        )
+                        if (searchUiState.showingList) {
+                            LazyCardList(
+                                movieList = searchUiState.movieList,
+                                expandedCardId = searchUiState.expandedCardId,
+                                onClickCard = mainViewModel::toggleSearchCardExpansion,
+                                fetchThumbnail = mainViewModel::fetchThumbnail,
+                                modifier = Modifier.weight(1f) // Use weight to ensure LazyCardList does not overlap SearchBar
+                            )
+                            }
+                        }
+                    }
+
+                MainScreens.Settings -> {
+                    SettingsScreen(
+                        signOut = mainViewModel::signOut
                     )
                 }
             }
-            MainScreens.Settings ->{
-                SettingsScreen(
-                    signOut = mainViewModel::signOut
-                )
-            }
-            else -> {}
         }
     }
 }
@@ -109,39 +130,24 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
 
 @Composable
 fun LazyCardList(
-    innerPadding: PaddingValues,
-    mainUiState: MainUiState,
-    dialogState: Boolean,
-    selectedMovieId: Int?,
+    movieList: List<Movie>,
+    expandedCardId: Int,
     onClickCard: (Int) -> Unit,
-    hideDialog: () -> Unit,
-    showDialog: (Int) -> Unit,
     fetchThumbnail: (String, (String?) -> Unit) -> Unit,
+    modifier: Modifier = Modifier
 ){
 
-    ConfirmationDialog(//confirmation dialog for deleting users/movies. Opens when isVisible=true.
-        selectedItem =
-        mainUiState.movieList.find { it.id == selectedMovieId }?.title,
-        isVisible = dialogState,
-        onDismissRequest = hideDialog,
-        onAcceptRequest = {  /*confirmDelete(deleteItem)*/ }
-    )
-
-    LazyColumn(modifier = Modifier
-        .padding(innerPadding)
-        .fillMaxSize()) {
-        val movies = mainUiState.movieList
+    LazyColumn(modifier = modifier){
         items(
-            items = movies,
+            items = movieList,
             key = {
                 item -> item.id
             }
         ) { item ->
             MovieCard(
                 movie = item,
-                isExpanded = mainUiState.expandedCardId == item.id,
+                isExpanded = expandedCardId == item.id,
                 onClickCard = {onClickCard(item.id)},
-                onShowDialog = showDialog,
                 fetchThumbnail = fetchThumbnail
             )
         }
@@ -153,7 +159,6 @@ fun MovieCard(
     movie: Movie,
     isExpanded: Boolean = false,
     onClickCard: (Int) -> Unit,             // expand card
-    onShowDialog: (Int) -> Unit,            //on delete icon, show confirmation dialog
     fetchThumbnail: (String, (String?) -> Unit) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -172,7 +177,9 @@ fun MovieCard(
                         style = MaterialTheme.typography.titleLarge,
                         overflow = TextOverflow.Ellipsis,
                         maxLines = 2,
-                        modifier = Modifier.padding(20.dp).width(275.dp)
+                        modifier = Modifier
+                            .padding(20.dp)
+                            .width(275.dp)
                     )
                 }
                 Column {
@@ -180,7 +187,7 @@ fun MovieCard(
                 }
             }
             Column {
-                IconButton(onClick = {onShowDialog(movie.id)}) {
+                IconButton(onClick = {}) {
                     Text(text = "Stream movie")
                     Icon(
                         Icons.Rounded.PlayArrow,
@@ -311,6 +318,61 @@ fun MovieThumbnail(
         contentDescription = "Movie Thumbnail",
         modifier = Modifier.size(150.dp)
     )
+}
+
+@Composable
+fun SearchBar(
+    searchUiState: SearchUiState,
+    updateSearchQuery: (String) -> Unit,
+    filterMovieList: () -> Unit,
+    toggleShowing: (Boolean) -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        TextField(
+            value = searchUiState.searchQuery,
+            onValueChange = updateSearchQuery,
+            placeholder = {
+                Text(
+                    text = "Search movies by title",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            singleLine = true,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 56.dp)
+        )
+
+        FilledIconButton(
+            onClick = {
+                filterMovieList()
+                toggleShowing(true)
+                Log.d("MainActivity", "Search button pressed. ${searchUiState.showingList}")
+            },
+            modifier = Modifier.size(56.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = "Search",
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
 }
 
 @Preview(showBackground = true)
