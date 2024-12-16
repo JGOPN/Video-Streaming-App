@@ -1,16 +1,20 @@
 package com.pdm.streamingapp.ui.main
 
+import android.app.Application
 import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
-import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.auth.FirebaseAuth
+import com.pdm.streamingapp.data.AppDatabase
 import com.pdm.streamingapp.model.Movie
+import com.pdm.streamingapp.model.MovieEntity
 import com.pdm.streamingapp.network.StreamingAppAPI
 import com.pdm.streamingapp.network.tmdbApi
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +51,11 @@ data class SearchUiState(
     val movieList : List<Movie> = listOf() //stores the list filtered by query
 )
 
-class MainViewModel : ViewModel() {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+    //AndroidViewModel is deprecated but we use it anyways because its the easiest way to get application context to start db
+
+    private val database = AppDatabase.getDatabase(application)
+    private val movieDao = database.movieDao()
 
     init {
         getMovieList()
@@ -105,8 +113,8 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    suspend fun saveMovieLocally(context: Context, responseBody: ResponseBody, fileName: String): File? {
-        //this function recieves the response from downloadMovie and saves it locally
+    suspend fun saveMovieLocally(context: Context, movieId: Int, responseBody: ResponseBody, fileName: String): File? {
+        //this function receives the response from downloadMovie and saves it locally
         return withContext(Dispatchers.IO) {
             try {
                 val outputStream: OutputStream
@@ -122,14 +130,20 @@ class MainViewModel : ViewModel() {
                     val uri = context.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
                         ?: throw Exception("Failed to create MediaStore entry.")
 
+                    Log.d("MainActivity","Saving movie locally @uri:  $uri")
+
                     outputStream = context.contentResolver.openOutputStream(uri)
                         ?: throw Exception("Failed to open output stream.")
-                    file = File(Environment.DIRECTORY_MOVIES, fileName) // Placeholder for return value
+
+                    movieDao.insertMovie(MovieEntity(id = 0, movieId = movieId, uri = uri.toString(), filePath = null))
+
+                    file = File(Environment.DIRECTORY_MOVIES, fileName)
                 } else {
                     // Legacy file handling for Android 9 and below
                     val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
                     file = File(moviesDir, fileName)
                     file.parentFile?.mkdirs() // Ensure directories exist
+                    movieDao.insertMovie(MovieEntity(id = 0, movieId = movieId, uri = "", filePath = "$moviesDir/$fileName"))
                     outputStream = FileOutputStream(file)
                 }
 
@@ -151,15 +165,11 @@ class MainViewModel : ViewModel() {
     fun downloadAndSaveMovie(context: Context, movieId: Int, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             try {
-                // Step 1: Call the API to download the movie
                 val responseBody: ResponseBody = StreamingAppAPI.retrofitService.downloadMovie(movieId = movieId.toString())
 
-                // Step 2: Define the file name and save path
                 val fileName = "movie_$movieId.mp4"
-                val filePath = "${context.getExternalFilesDir(null)}/$fileName"
 
-                // Step 3: Save the movie locally
-                val savedFile: File? = saveMovieLocally(context, responseBody, fileName)
+                val savedFile: File? = saveMovieLocally(context, movieId, responseBody, fileName)
 
                 if (savedFile != null) {
                     onResult(true, "Movie saved at: ${savedFile.absolutePath}")
@@ -172,6 +182,52 @@ class MainViewModel : ViewModel() {
             }
         }
     }
+
+    suspend fun deleteMovie(context: Context, uri: Uri): Boolean {
+        return withContext(Dispatchers.IO) {
+            Log.d("MainActivity","Called deleteMovie with uri: $uri")
+            try {
+                // Attempt to delete the file via ContentResolver
+                val rowsDeleted = context.contentResolver.delete(uri, null, null)
+                rowsDeleted > 0 // Return true if at least one row was deleted
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false // Return false on error
+            }
+        }
+    }
+
+    fun deleteMovieCall(context: Context, uri: Uri, movieId: Int){
+        viewModelScope.launch {
+            deleteMovie(context, uri)
+            movieDao.deleteMovie(movieId)
+        }
+    }
+
+    fun getDownloadPath(movieId: Int, pathCallback: (String?) -> Unit) {
+        //checks if a movie is downloaded locally (thus in the room db)
+        viewModelScope.launch {
+            val movie = movieDao.getMovieById(movieId)
+            if (movie?.filePath != null) {
+                pathCallback(movie.filePath)
+            } else {
+                pathCallback(null)
+            }
+        }
+    }
+
+    fun getDownloadUri(movieId: Int, pathCallback: (Uri?) -> Unit) {
+        //checks if a movie is downloaded locally (thus in the room db)
+        viewModelScope.launch {
+            val movie = movieDao.getMovieById(movieId)
+            if (movie?.uri != null) {
+                pathCallback(Uri.parse(movie.uri))
+            } else {
+                pathCallback(null)
+            }
+        }
+    }
+
 
     private val _searchUiState = MutableStateFlow(SearchUiState())
     val searchUiState: StateFlow<SearchUiState> = _searchUiState.asStateFlow()

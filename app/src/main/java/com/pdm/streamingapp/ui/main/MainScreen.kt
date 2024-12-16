@@ -1,6 +1,7 @@
 package com.pdm.streamingapp.ui.main
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -20,7 +21,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Warning
@@ -64,7 +67,7 @@ import com.pdm.streamingapp.ui.theme.StreamingAppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
+fun MainScreen(onPlayMovie: (Uri) -> Unit, mainViewModel: MainViewModel = viewModel()) {
     val mainUiState by mainViewModel.mainUiState.collectAsState()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val context = LocalContext.current
@@ -108,7 +111,10 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
                             expandedCardId = mainUiState.expandedCardId,
                             onClickCard = mainViewModel::toggleCardExpansion,
                             downloadAndSaveMovie = mainViewModel::downloadAndSaveMovie,
-                            fetchThumbnail = mainViewModel::fetchThumbnail
+                            fetchThumbnail = mainViewModel::fetchThumbnail,
+                            getDownloadUri = mainViewModel::getDownloadUri,
+                            deleteMovie = mainViewModel::deleteMovieCall,
+                            onPlayMovie = onPlayMovie
                         )
                     }
                 }
@@ -129,6 +135,9 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
                                 onClickCard = mainViewModel::toggleSearchCardExpansion,
                                 fetchThumbnail = mainViewModel::fetchThumbnail,
                                 downloadAndSaveMovie = mainViewModel::downloadAndSaveMovie,
+                                getDownloadUri = mainViewModel::getDownloadUri,
+                                deleteMovie = mainViewModel::deleteMovieCall,
+                                onPlayMovie = onPlayMovie,
                                 modifier = Modifier.weight(1f) // Use weight to ensure LazyCardList does not overlap SearchBar
                             )
                             }
@@ -153,6 +162,9 @@ fun LazyCardList(
     onClickCard: (Int) -> Unit,
     fetchThumbnail: (String, (String?) -> Unit) -> Unit,
     downloadAndSaveMovie: (Context, Int, (Boolean, String?) -> Unit) -> Unit,
+    getDownloadUri: (Int, (Uri?) -> Unit) -> Unit,
+    deleteMovie: (Context, Uri, Int) -> Unit,
+    onPlayMovie: (Uri) -> Unit,
     modifier: Modifier = Modifier
 ){
 
@@ -168,7 +180,10 @@ fun LazyCardList(
                 isExpanded = expandedCardId == item.id,
                 onClickCard = {onClickCard(item.id)},
                 fetchThumbnail = fetchThumbnail,
-                downloadAndSaveMovie = downloadAndSaveMovie
+                downloadAndSaveMovie = downloadAndSaveMovie,
+                getDownloadUri = getDownloadUri,
+                deleteMovie = deleteMovie,
+                onPlayMovie = onPlayMovie
             )
         }
     }
@@ -181,9 +196,20 @@ fun MovieCard(
     onClickCard: (Int) -> Unit,             // expand card
     fetchThumbnail: (String, (String?) -> Unit) -> Unit,
     modifier: Modifier = Modifier,
-    downloadAndSaveMovie: (Context, Int, (Boolean, String?) -> Unit) -> Unit
+    downloadAndSaveMovie: (Context, Int, (Boolean, String?) -> Unit) -> Unit,
+    getDownloadUri: (Int, (Uri?) -> Unit) -> Unit,
+    deleteMovie: (Context, Uri, Int) -> Unit,
+    onPlayMovie: (Uri) -> Unit
 ) {
     val context = LocalContext.current
+    val movieDownloadUri = remember {  mutableStateOf<Uri?>(null) }//show download or play button depending if movie is avaliable locally
+
+    LaunchedEffect(movie.id) {
+        getDownloadUri(movie.id) { uri ->
+            movieDownloadUri.value = uri
+        }
+    }
+
     Card(modifier = modifier.fillMaxWidth(), onClick = {onClickCard(movie.id)}) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -231,28 +257,50 @@ fun MovieCard(
                     overflow = TextOverflow.Ellipsis,
                     maxLines = 3,
                 )
-
-            }
-            Column(Modifier.weight(1f)) {
                 Text(
                     text = "Genre(s): ${movie.genres.joinToString(", ")}",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+
+            }
+            Column(Modifier.weight(1f)) {
                 Row{
-                    IconButton(onClick = { downloadAndSaveMovie(context, movie.id, { success, message ->
-                        if(success) Toast.makeText(context, "Movie downloaded successfully!", Toast.LENGTH_LONG).show()
-                        else Toast.makeText(context, "An error occured while downloading the movie: $message", Toast.LENGTH_LONG).show()
-                    }) }) {
-                        Icon(
-                            painter = painterResource(R.drawable.download_24dp),
-                            contentDescription = "download movie to device"
-                        )
+                    if(movieDownloadUri.value==null){//download path is null, show download and stream options
+                        IconButton(onClick = { downloadAndSaveMovie(context, movie.id, { success, message ->
+                            if(success) Toast.makeText(context, "Movie downloaded successfully!", Toast.LENGTH_LONG).show()
+                            else Toast.makeText(context, "An error occurred while downloading the movie: $message", Toast.LENGTH_LONG).show()
+                        }) }) {
+                            Icon(
+                                painter = painterResource(R.drawable.download_24dp),
+                                contentDescription = "download movie to device"
+                            )
+                        }
+
+                        IconButton(onClick = {}){
+                            Icon(
+                                painter = painterResource(R.drawable.stream_24dp),
+                                contentDescription = "stream movie "
+                            )
+                        }
                     }
-                    IconButton(onClick = {}){
-                        Icon(
-                            painter = painterResource(R.drawable.stream_24dp),
-                            contentDescription = "stream movie "
-                        )
+                    else{ //movie is downloaded locally. Only show delete or play options
+                        IconButton(onClick = { onPlayMovie(movieDownloadUri.value!!) }) {
+                            Icon(
+                                Icons.Rounded.PlayArrow,
+                                contentDescription = "Play local file",
+                                modifier.size(30.dp)
+                            )
+                        }
+                        IconButton(onClick = {
+                            deleteMovie(context, movieDownloadUri.value!!, movie.id)
+                            Toast.makeText(context, "Movie deleted successfully!", Toast.LENGTH_LONG).show()
+                        }) {
+                            Icon(
+                                Icons.Rounded.Delete,
+                                contentDescription = "Delete movie local",
+                                modifier.size(30.dp)
+                            )
+                        }
                     }
                 }
 

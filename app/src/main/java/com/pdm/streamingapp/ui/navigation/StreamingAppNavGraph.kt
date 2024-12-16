@@ -1,5 +1,6 @@
 package com.pdm.streamingapp.ui.navigation
 
+import android.net.Uri
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -11,11 +12,13 @@ import androidx.navigation.compose.composable
 import com.pdm.streamingapp.ui.auth.LoginScreen
 import com.pdm.streamingapp.ui.auth.RegisterScreen
 import com.pdm.streamingapp.ui.main.MainScreen
+import com.pdm.streamingapp.ui.movieplayer.MoviePlayerScreen
 
 enum class StreamingAppDestinations(val title: String) {
     Login(title = "login"),
     Register(title = "register"),
-    Main(title = "main")
+    Main(title = "main"),
+    MoviePlayer(title = "movieplayer")
 }
 
 @Composable
@@ -44,8 +47,21 @@ fun StreamingAppNavGraph(navController: NavHostController,
                     .padding(16.dp)
             )
         }
-        composable(route = StreamingAppDestinations.Main.title){
-            MainScreen()
+        composable(route = StreamingAppDestinations.Main.name) {
+            MainScreen(
+                onPlayMovie = { videoUri ->
+                    val encodedUri = Uri.encode(videoUri.toString())
+                    navController.navigate("movieplayer/$encodedUri")
+                }
+            )
         }
+        composable(route = "movieplayer/{videoUri}") { backStackEntry ->
+            val videoUriString = backStackEntry.arguments?.getString("videoUri")
+            val videoUri = videoUriString?.let { Uri.parse(Uri.decode(it)) }
+            if (videoUri != null) {
+                MoviePlayerScreen(videoUri = videoUri)
+            }
+        }
+
     }
 }
