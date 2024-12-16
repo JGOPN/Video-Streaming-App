@@ -52,7 +52,8 @@ fun StreamingAppNavGraph(navController: NavHostController,
                 onPlayMovie = { videoUri ->
                     val encodedUri = Uri.encode(videoUri.toString())
                     navController.navigate("movieplayer/$encodedUri")
-                }
+                },
+                onSignOut = {navController.navigate(StreamingAppDestinations.Login.name)}
             )
         }
         composable(route = "movieplayer/{videoUri}") { backStackEntry ->

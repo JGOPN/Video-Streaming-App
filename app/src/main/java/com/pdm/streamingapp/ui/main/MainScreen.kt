@@ -5,10 +5,12 @@ import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -67,7 +70,7 @@ import com.pdm.streamingapp.ui.theme.StreamingAppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(onPlayMovie: (Uri) -> Unit, mainViewModel: MainViewModel = viewModel()) {
+fun MainScreen(onPlayMovie: (Uri) -> Unit, onSignOut: () -> Unit, mainViewModel: MainViewModel = viewModel()) {
     val mainUiState by mainViewModel.mainUiState.collectAsState()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val context = LocalContext.current
@@ -76,11 +79,8 @@ fun MainScreen(onPlayMovie: (Uri) -> Unit, mainViewModel: MainViewModel = viewMo
 
     RequestVideoPermissions { permissions ->
         val allGranted = permissions.values.all { it }
-        if (allGranted) {
-            Toast.makeText(context, "All permissions granted!", Toast.LENGTH_LONG).show()
-        } else {
+        if (!allGranted) {
             Toast.makeText(context, "Some permissions were denied", Toast.LENGTH_LONG).show()
-
         }
     }
 
@@ -146,7 +146,8 @@ fun MainScreen(onPlayMovie: (Uri) -> Unit, mainViewModel: MainViewModel = viewMo
 
                 MainScreens.Settings -> {
                     SettingsScreen(
-                        signOut = mainViewModel::signOut
+                        signOut = mainViewModel::signOut,
+                        onSignOut = onSignOut
                     )
                 }
             }
@@ -193,7 +194,7 @@ fun LazyCardList(
 fun MovieCard(
     movie: Movie,
     isExpanded: Boolean = false,
-    onClickCard: (Int) -> Unit,             // expand card
+    onClickCard: (Int) -> Unit,
     fetchThumbnail: (String, (String?) -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     downloadAndSaveMovie: (Context, Int, (Boolean, String?) -> Unit) -> Unit,
@@ -202,108 +203,153 @@ fun MovieCard(
     onPlayMovie: (Uri) -> Unit
 ) {
     val context = LocalContext.current
-    val movieDownloadUri = remember {  mutableStateOf<Uri?>(null) }//show download or play button depending if movie is avaliable locally
+    val movieDownloadUri = remember { mutableStateOf<Uri?>(null) }
+    val isDownloaded = remember { mutableStateOf(false) }
 
     LaunchedEffect(movie.id) {
         getDownloadUri(movie.id) { uri ->
             movieDownloadUri.value = uri
+            isDownloaded.value = uri != null
         }
     }
 
-    Card(modifier = modifier.fillMaxWidth(), onClick = {onClickCard(movie.id)}) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = modifier
-                .fillMaxWidth()
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically){
-                //use two rows to align the last icon to the right, suggested by chat.
-                Column{
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(6.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.clickable { onClickCard(movie.id) }) {
+            // Header Row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Start,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                MovieThumbnail(movie.title, fetchThumbnail, modifier = Modifier.size(80.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
                         text = movie.title,
                         style = MaterialTheme.typography.titleLarge,
-                        overflow = TextOverflow.Ellipsis,
                         maxLines = 2,
-                        modifier = Modifier
-                            .padding(20.dp)
-                            .width(200.dp)
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Release: ${movie.releaseYear}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Column {
-                    MovieThumbnail(movie.title, fetchThumbnail)
-                }
             }
-        }
-        if(isExpanded) Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(6.dp, 0.dp, 6.dp, 6.dp)
-        ){
-            Column(Modifier.weight(2f)) {
-                Text(
-                    text = "Release year: ${movie.releaseYear}",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = "Duration: ${movie.duration} minutes",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = "Description: ${movie.description}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = 3,
-                )
-                Text(
-                    text = "Genre(s): ${movie.genres.joinToString(", ")}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
 
-            }
-            Column(Modifier.weight(1f)) {
-                Row{
-                    if(movieDownloadUri.value==null){//download path is null, show download and stream options
-                        IconButton(onClick = { downloadAndSaveMovie(context, movie.id, { success, message ->
-                            if(success) Toast.makeText(context, "Movie downloaded successfully!", Toast.LENGTH_LONG).show()
-                            else Toast.makeText(context, "An error occurred while downloading the movie: $message", Toast.LENGTH_LONG).show()
-                        }) }) {
+            // Expanded Section
+            if (isExpanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "Duration: ${movie.duration} minutes",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Description: ${movie.description}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Genres: ${movie.genres.joinToString(", ")}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Action Row
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                ) {
+                    if (!isDownloaded.value) {
+                        IconButton(onClick = {
+                            downloadAndSaveMovie(context, movie.id) { success, message ->
+                                if (success) {
+                                    Toast.makeText(
+                                        context,
+                                        "Movie downloaded successfully!",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    isDownloaded.value = true
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Error: $message",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        }) {
                             Icon(
                                 painter = painterResource(R.drawable.download_24dp),
-                                contentDescription = "download movie to device"
+                                contentDescription = "Download",
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
 
-                        IconButton(onClick = {}){
+                        IconButton(onClick = {
+                            onPlayMovie(Uri.parse("http://35.204.253.240/hls/streams/movie_${movie.id}/playlist.m3u8"))
+                        }) {
                             Icon(
                                 painter = painterResource(R.drawable.stream_24dp),
-                                contentDescription = "stream movie "
+                                contentDescription = "Stream",
+                                tint = MaterialTheme.colorScheme.tertiary
                             )
                         }
-                    }
-                    else{ //movie is downloaded locally. Only show delete or play options
+                    } else {
                         IconButton(onClick = { onPlayMovie(movieDownloadUri.value!!) }) {
                             Icon(
                                 Icons.Rounded.PlayArrow,
-                                contentDescription = "Play local file",
-                                modifier.size(30.dp)
+                                contentDescription = "Play",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(30.dp)
                             )
                         }
+
                         IconButton(onClick = {
                             deleteMovie(context, movieDownloadUri.value!!, movie.id)
-                            Toast.makeText(context, "Movie deleted successfully!", Toast.LENGTH_LONG).show()
+                            Toast.makeText(
+                                context,
+                                "Movie deleted successfully!",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            isDownloaded.value = false
                         }) {
                             Icon(
                                 Icons.Rounded.Delete,
-                                contentDescription = "Delete movie local",
-                                modifier.size(30.dp)
+                                contentDescription = "Delete",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(30.dp)
                             )
                         }
                     }
                 }
-
             }
         }
     }
@@ -383,7 +429,8 @@ fun ShowError(onClick: () -> Unit) {
 @Composable
 fun MovieThumbnail(
     movieTitle: String,
-    fetchThumbnail: (String, (String?) -> Unit) -> Unit
+    fetchThumbnail: (String, (String?) -> Unit) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     //val thumbnailUrl by viewModel.thumbnailUrl.collectAsState()
     val thumbnailUrl = remember {  mutableStateOf<String?>(null) } //if true, shows user added confirmation.
@@ -392,10 +439,14 @@ fun MovieThumbnail(
         fetchThumbnail(movieTitle) { thumbnailUrl.value = it }
     }
 
+    Icons.Rounded
+
     Image(
-        painter = rememberAsyncImagePainter(thumbnailUrl.value),
+        painter = if(thumbnailUrl.value != null) rememberAsyncImagePainter(thumbnailUrl.value)
+                  else painterResource(R.drawable.placeholder)
+        ,
         contentDescription = "Movie Thumbnail",
-        modifier = Modifier.size(150.dp)
+        modifier = modifier
     )
 }
 
