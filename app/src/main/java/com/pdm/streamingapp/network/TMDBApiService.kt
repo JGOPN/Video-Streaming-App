@@ -19,7 +19,8 @@ val tmdbApi: TMDBApiService = Retrofit.Builder()
     .build()
     .create(TMDBApiService::class.java)
 
-private val tmdbApiKey: String = "6894f45ffcaebf763639f45436828282"
+// api key from local.properties
+private val tmdbApiKey: String = BuildConfig.TMDB_API_KEY
 
 interface TMDBApiService {
     @GET("search/movie")
